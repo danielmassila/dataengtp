@@ -1,7 +1,7 @@
 # Practice 3: Dimensional Modeling & Star Schema (Courtesy of  Hasan Tanvir, Kristo Raun, and Ahmed Wael )
 
-Welcome to Practice 3!  
-In the last session, we built a normalized **operational database** (OLTP) for supermarket transactions.  
+Welcome to Practice 3!
+In the last session, we built a normalized **operational database** (OLTP) for supermarket transactions.
 In this session, we’ll shift to building an **analytical database** (OLAP) using **dimensional modeling** and a **star schema**.
 
 ---
@@ -39,29 +39,29 @@ ___
 
 ## 1. Analytical Needs
 
-Management wants to analyze supermarket sales data.  
+Management wants to analyze supermarket sales data.
 The following reporting requirements must be supported:
 
-- **Daily and monthly sales by store**  
-- **Sales by product category**  
-- **Top-selling products and suppliers**  
+- **Daily and monthly sales by store**
+- **Sales by product category**
+- **Top-selling products and suppliers**
 - **Average basket size** (number of products per purchase)
 
 ---
 
 ## 2. Why Classical Data Modelling Does Not Work Well for Analytics
 
-Our OLTP model from Practice 2 is excellent for transactions, but painful for analysis.  
+Our OLTP model from Practice 2 is excellent for transactions, but painful for analysis.
 Key reasons:
 
-- **Too many joins**: normalized data spreads information across multiple tables.  
-- **Poor performance**: queries involve lots of small tables and foreign keys.  
-- **History tracking is difficult**:  
-  - Product costs may change over time.  
-  - Customers may move to new locations.  
-- **Aggregations are scattered**:  
-  - Product price is in `Product`.  
-  - Quantity is in `PurchaseDetail`.  
+- **Too many joins**: normalized data spreads information across multiple tables.
+- **Poor performance**: queries involve lots of small tables and foreign keys.
+- **History tracking is difficult**:
+  - Product costs may change over time.
+  - Customers may move to new locations.
+- **Aggregations are scattered**:
+  - Product price is in `Product`.
+  - Quantity is in `PurchaseDetail`.
   - Computing revenue requires multiple joins instead of being centralized.
 
 ---
@@ -70,7 +70,7 @@ Key reasons:
 
 ### 3.1 Identifying the Business Process
 
-- Determine the **core thing being measured/analyzed**, e.g., sales transactions.  
+- Determine the **core thing being measured/analyzed**, e.g., sales transactions.
 - Each fact table corresponds to a business process (FactSales for supermarket purchases).
 
 ### 3.2 Defining the Grain of the Fact Table
@@ -106,12 +106,12 @@ Key reasons:
 ## 4. Task: Star Schema & OLAP Queries
 
 ### ER Model (from Practice 2 – OLTP)
-Entities included:  
-- **Customer**  
-- **Product** (with Category, Supplier)  
-- **Store**  
-- **Purchase** (with PurchaseDetail)  
-- **Payment**  
+Entities included:
+- **Customer**
+- **Product** (with Category, Supplier)
+- **Store**
+- **Purchase** (with PurchaseDetail)
+- **Payment**
 
 These were normalized for operations.
 
@@ -293,7 +293,7 @@ Once inserted, you can run the queries for daily sales, top products, average ba
 ```sql
 -- DimDate
 INSERT INTO DimDate (FullDate, Year, Month, Day, DayOfWeek)
-VALUES 
+VALUES
 ('2025-09-18', 2025, 9, 18, 'Thursday'),
 ('2025-09-19', 2025, 9, 19, 'Friday'),
 ('2025-09-20', 2025, 9, 20, 'Saturday');
@@ -320,7 +320,7 @@ VALUES
 ('DairyBest Supplier', 'sales@dairybest.com'),
 ('BakeHouse Supplier', 'info@bakehouse.com');
 
-  
+
 --dimcustomer
 INSERT INTO DimCustomer (CustomerKey, FirstName, LastName, Segment, City, ValidFrom, ValidTo)
 VALUES
@@ -353,20 +353,66 @@ VALUES
 
 In this section, we will write queries to analyze sales performance at the store level. The focus is on aggregating sales data by day and by month to identify trends, peak periods, and store-wise performance.
 
+Sales by day and by shop
+```
+SELECT s.StoreName, d.FullDate, SUM(f.SalesAmount) AS total_sales
+FROM FactSales f
+JOIN DimDate d ON f.DateKey = d.DateKey
+JOIN DimStore s ON f.StoreKey = s.StoreKey
+GROUP BY s.StoreKey, s.StoreName, d.FullDate
+ORDER BY d.FullDate, s.StoreName;
+```
+
+Sales by month and by shop
+
+```
+SELECT s.StoreName, d.Month, d.Day, SUM(f.SalesAmount) as total_sales
+FROM FactSales f
+JOIN DimDate d ON f.DateKey = d.DateKey
+JOIN DimStore s ON f.StoreKey = s.StoreKey
+GROUP BY s.StoreKey, s.StoreName, d.Month, d.Day
+ORDER BY d.month, d.Day, s.StoreName;
+```
 
 ### 7.2 Sales by Product Category
 
+```
+SELECT p.Category, SUM(f.SalesAmount) AS total_sales, SUM(f.Quantity) AS quantity_sold
+FROM FactSales f
+JOIN DimProduct p ON f.ProductKey = p.ProductKey
+GROUP BY p.Category
+ORDER BY total_sales DESC;
+```
 
 ### 7.3 Top-Selling Products and Suppliers
 
+```
+SELECT p.Category, s.SupplierName, SUM(f.SalesAmount) AS total_sales, SUM(f.Quantity) AS quantity_sold
+FROM FactSales f
+JOIN DimProduct p ON f.ProductKey = p.ProductKey
+JOIN DimSupplier s ON f.SupplierKey = s.SupplierKey
+GROUP BY p.Category, s.SupplierName, s.SupplierKey,
+ORDER BY p.Category, total_sales DESC;
+```
 
 
 ### 7.4 Average Basket Size (Number of Products per Purchase)
 
+```
+WITH basket_size AS (
+    SELECT DateKey, StoreKey, CustomerKey, PaymentKey,COUNT(*) AS product_count, SUM(Quantity) AS item_count
+    FROM FactSales
+    GROUP BY DateKey, StoreKey, CustomerKey, PaymentKey
+)
+SELECT AVG(product_count) AS avg_products_per_purchase,
+       AVG(item_count) AS avg_items_per_purchase
+FROM basket_size;
+
+```
 
 ## 8. Handling Customer Moves in OLAP
 
-- **Problem in OLTP**: updating customer address overwrites history; past purchases show new city, which is SCD Type 1. 
+- **Problem in OLTP**: updating customer address overwrites history; past purchases show new city, which is SCD Type 1.
 
 **SCD Type 1 (Overwrite – No History)**
 
@@ -377,7 +423,7 @@ Old Data
 | 1           | Alice     | Smith    | Regular | Tallinn |
 
 
-New Data 
+New Data
 
 | CustomerKey | FirstName | LastName | Segment | City    |
 | ----------- | --------- | -------- | ------- | ------- |
@@ -394,7 +440,7 @@ Example:
 | 1           | Alice     | Smith    | Regular | Tallinn | 2025-01-01 | 2025-09-20 |
 | 3           | Alice     | Smith    | Regular | Tartu   | 2025-09-21 | 9999-12-31 |
 
-Alice's new CustomerKey is 3 because Bob is 2. 
+Alice's new CustomerKey is 3 because Bob is 2.
 
 
 
@@ -403,10 +449,21 @@ Alice's new CustomerKey is 3 because Bob is 2.
 - New purchases after the move link to the new city.
 - This ensures analytics correctly reflects sales by location and customer history.
 
-## 9. Implement a Migration from OLTP Schema (Practice 03) to the new OLAP Scheam (Practice 04) using Airflow
+```
+UPDATE DIMCUSTOMER
+SET validto = CURRENT_DATE - INTERVAL '1 day'
+WHERE CUSTOMERKEY = 1
+AND validto = '9999-12-31'
+
+INSERT INTO DimCustomer (FirstName, LastName, Segment, City, ValidFrom, ValidTo)
+VALUES ('Alice', 'Smith', 'Regular', 'Tartu', CURRENT_DATE, '9999-12-31');
+
+```
+
+## 9. Implement a Migration from OLTP Schema (Practice 03) to the new OLAP Schema (Practice 04) using Airflow
 
 To connect the postgres instance of this practice with the Airflow Practice use the following command
 
 ```sh
-    docker network connect airflow_network db_olap 
+    docker network connect airflow_network db_olap
 ```
